@@ -19,10 +19,9 @@ use Cache\Adapter\PHPArray\ArrayCachePool;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Exception;
-use Doctrine\DBAL\Logging\DebugStack;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Platforms\MySQL57Platform;
 use Doctrine\DBAL\Platforms\MySQL80Platform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\Configuration;
 use Doctrine\ORM\EntityManager;
@@ -140,6 +139,7 @@ use LongitudeOne\Spatial\ORM\Query\AST\Functions\Standard\StUnion;
 use LongitudeOne\Spatial\ORM\Query\AST\Functions\Standard\StWithin;
 use LongitudeOne\Spatial\ORM\Query\AST\Functions\Standard\StX;
 use LongitudeOne\Spatial\ORM\Query\AST\Functions\Standard\StY;
+use LongitudeOne\Spatial\Tests\DbalExtensions\QueryLog;
 use LongitudeOne\Spatial\Tests\Fixtures\GeographyEntity;
 use LongitudeOne\Spatial\Tests\Fixtures\GeoLineStringEntity;
 use LongitudeOne\Spatial\Tests\Fixtures\GeometryEntity;
@@ -282,7 +282,7 @@ abstract class OrmTestCase extends TestCase
 
     private SchemaTool $schemaTool;
 
-    private DebugStack $sqlLoggerStack;
+    private QueryLog $sqlLoggerStack;
 
     /**
      * Setup connection before class creation.
@@ -302,10 +302,18 @@ abstract class OrmTestCase extends TestCase
     protected function setUp(): void
     {
         try {
-            if (!isset($this->supportedPlatforms[$this->getPlatform()->getName()])) {
+            $platformName = $this->getPlatform();
+
+            if ($platformName instanceof PostgreSQLPlatform) {
+                $platformName = 'postgresql';
+            } elseif ($platformName instanceof MySQL80Platform) {
+                $platformName = 'mysql';
+            }
+
+            if (!isset($this->supportedPlatforms[$platformName])) {
                 static::markTestSkipped(sprintf(
                     'No support for platform %s in test class %s.',
-                    $this->getPlatform()->getName(),
+                    is_object($platformName) ? $platformName::class : $platformName,
                     get_class($this)
                 ));
             }
@@ -357,18 +365,17 @@ abstract class OrmTestCase extends TestCase
      * @param mixed                 $value    Value to test
      * @param AbstractPlatform|null $platform the platform
      */
-    protected static function assertBigPolygon($value, AbstractPlatform $platform = null): void
+    protected static function assertBigPolygon($value, ?AbstractPlatform $platform = null): void
     {
-        switch ($platform->getName()) {
-            case 'mysql':
-                // MySQL does not respect creation order of points composing a Polygon.
-                static::assertSame('POLYGON((0 10,0 0,10 0,10 10,0 10))', $value);
-                break;
-            case 'postgresl':
-            default:
-                // Here is the good result.
-                // A linestring minus another crossing linestring returns initial linestring splited
-                static::assertSame('POLYGON((0 10,10 10,10 0,0 0,0 10))', $value);
+        if ($platform instanceof PostgreSQLPlatform) {
+            // Here is the good result.
+            // A linestring minus another crossing linestring returns initial linestring splited
+            static::assertSame('POLYGON((0 10,10 10,10 0,0 0,0 10))', $value);
+        }
+
+        if ($platform instanceof MySQL80Platform) {
+            // MySQL does not respect creation order of points composing a Polygon.
+            static::assertSame('POLYGON((0 10,0 0,10 0,10 10,0 10))', $value);
         }
     }
 
@@ -380,17 +387,10 @@ abstract class OrmTestCase extends TestCase
      * @param mixed                 $value    Value to test
      * @param AbstractPlatform|null $platform the platform
      */
-    protected static function assertEmptyGeometry($value, AbstractPlatform $platform = null): void
+    protected static function assertEmptyGeometry($value, ?AbstractPlatform $platform = null): void
     {
         $expected = 'EMPTY';
         $method = 'assertStringEndsWith';
-
-        if ($platform instanceof MySQL57Platform && !$platform instanceof MySQL80Platform) {
-            // MySQL5 does not return the standard answer
-            // This bug was solved in MySQL8
-            $expected = 'GEOMETRYCOLLECTION()';
-            $method = 'assertSame';
-        }
 
         static::$method($expected, $value);
     }
@@ -438,25 +438,19 @@ abstract class OrmTestCase extends TestCase
      * @throws Exception                    when connection is not successful
      * @throws UnsupportedPlatformException when platform is unsupported
      */
-    protected static function getConnection()
+    protected static function getConnection(): DbalExtensions\Connection
     {
         if (isset(static::$connection)) {
             return static::$connection;
         }
 
         $connection = DriverManager::getConnection(static::getConnectionParameters());
+        $connection->close();
 
-        switch ($connection->getDatabasePlatform()->getName()) {
-            case 'postgresql':
-                $connection->executeStatement('CREATE EXTENSION postgis');
-                break;
-            case 'mysql':
-                break;
-            default:
-                throw new UnsupportedPlatformException(sprintf(
-                    'DBAL platform "%s" is not currently supported.',
-                    $connection->getDatabasePlatform()->getName()
-                ));
+        $connection = new DbalExtensions\Connection(static::getConnectionParameters(), $connection->getDriver());
+
+        if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+            $connection->executeStatement('CREATE EXTENSION IF NOT EXISTS postgis');
         }
 
         return $connection;
@@ -481,7 +475,12 @@ abstract class OrmTestCase extends TestCase
 
         $tmpConnection = DriverManager::getConnection(static::getCommonConnectionParameters());
 
-        $tmpConnection->getSchemaManager()->dropAndCreateDatabase($dbName);
+        $schemaManager = $tmpConnection->createSchemaManager();
+
+        foreach ($schemaManager->listTables() as $table) {
+            $schemaManager->dropTable($table->getName());
+        }
+
         $tmpConnection->close();
 
         return $parameters;
@@ -508,11 +507,9 @@ abstract class OrmTestCase extends TestCase
             return $this->entityManager;
         }
 
-        $this->sqlLoggerStack = new DebugStack();
-        $this->sqlLoggerStack->enabled = false;
-
         try {
-            static::getConnection()->getConfiguration()->setSQLLogger($this->sqlLoggerStack);
+            $this->sqlLoggerStack = static::getConnection()->queryLog;
+
             $realPaths = [realpath(__DIR__.'/Fixtures')];
             $config = new Configuration();
 
@@ -521,7 +518,7 @@ abstract class OrmTestCase extends TestCase
             $config->setProxyNamespace('LongitudeOne\Spatial\Tests\Proxies');
             $config->setMetadataDriverImpl(new AttributeDriver($realPaths));
 
-            return EntityManager::create(static::getConnection(), $config);
+            return new EntityManager(static::getConnection(), $config);
         } catch (ORMException|Exception|UnsupportedPlatformException $e) {
             static::fail(sprintf('Unable to init the EntityManager: %s', $e->getMessage()));
         }
@@ -529,8 +526,6 @@ abstract class OrmTestCase extends TestCase
 
     /**
      * Get platform.
-     *
-     * @return AbstractPlatform
      */
     protected function getPlatform(): ?AbstractPlatform
     {
@@ -550,11 +545,11 @@ abstract class OrmTestCase extends TestCase
             return 'mysql8';
         }
 
-        if ($this->getPlatform() instanceof MySQL57Platform) {
-            return 'mysql5';
+        if ($this->getPlatform() instanceof PostgreSQLPlatform) {
+            return 'postgresql';
         }
 
-        return $this->getPlatform()->getName();
+        return $this->getPlatform()::class;
     }
 
     /**
@@ -679,7 +674,7 @@ abstract class OrmTestCase extends TestCase
         }
 
         // This test does not work when we compare to 'mysql' (on Travis only)
-        if ('postgresql' !== $this->getPlatform()->getName()) {
+        if (!$this->getPlatform() instanceof PostgreSQLPlatform) {
             $this->addSpecificMySqlFunctions($configuration);
         }
     }
@@ -695,18 +690,6 @@ abstract class OrmTestCase extends TestCase
                     Type::addType($typeName, static::$types[$typeName]);
                 } catch (Exception $e) {
                     static::fail(sprintf('Unable to add type %s: %s', $typeName, $e->getMessage()));
-                }
-
-                try {
-                    $type = Type::getType($typeName);
-
-                    // Since doctrineTypeComments may already be initialized check if added type requires comment
-                    $platform = $this->getPlatform();
-                    if ($type->requiresSQLCommentHint($platform) && !$platform->isCommentedDoctrineType($type)) {
-                        $this->getPlatform()->markDoctrineTypeCommented(Type::getType($typeName));
-                    }
-                } catch (Exception $e) {
-                    static::fail(sprintf('Unable to get type %s: %s', $typeName, $e->getMessage()));
                 }
 
                 static::$addedTypes[$typeName] = true;

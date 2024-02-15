@@ -15,6 +15,7 @@
 
 namespace LongitudeOne\Spatial\Tests\ORM\Query\AST\Functions\Standard;
 
+use Doctrine\DBAL\Platforms\MySQL80Platform;
 use LongitudeOne\Spatial\Tests\Helper\PolygonHelperTrait;
 use LongitudeOne\Spatial\Tests\OrmTestCase;
 
@@ -116,13 +117,11 @@ class StContainsTest extends OrmTestCase
         static::assertCount(2, $result);
         static::assertEquals($bigPolygon, $result[0]);
 
-        switch ($this->getPlatform()->getName()) {
-            case 'mysql':
-                // MySQL does not respect the initial polygon and reconstructs it in a bad (direction) way
-                break;
-            case 'postgresql':
-            default:
-                static::assertEquals($holeyPolygon, $result[1]);
+        // MySQL does not respect the initial polygon and reconstructs it in a bad (direction) way
+        if($this->getPlatform() instanceof MySQL80Platform) {
+            return;
         }
+
+        static::assertEquals($holeyPolygon, $result[1]);
     }
 }

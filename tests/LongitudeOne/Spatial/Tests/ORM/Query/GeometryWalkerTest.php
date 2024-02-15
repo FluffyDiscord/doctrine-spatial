@@ -15,6 +15,8 @@
 
 namespace LongitudeOne\Spatial\Tests\ORM\Query;
 
+use Doctrine\DBAL\Platforms\MySQL80Platform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Query;
 use LongitudeOne\Spatial\Tests\Helper\LineStringHelperTrait;
@@ -100,15 +102,9 @@ class GeometryWalkerTest extends OrmTestCase
         $this->persistStraightLineString();
         $this->persistAngularLineString();
 
-        switch ($this->getPlatform()->getName()) {
-            case 'mysql':
-            case 'postgresql':
-            default:
-                $asBinary = 'ST_AsBinary';
-                $startPoint = 'ST_StartPoint';
-                $envelope = 'ST_Envelope';
-                break;
-        }
+        $asBinary = 'ST_AsBinary';
+        $startPoint = 'ST_StartPoint';
+        $envelope = 'ST_Envelope';
 
         static::test($this->getEntityManager(), $asBinary, $startPoint, $envelope);
     }
@@ -123,15 +119,9 @@ class GeometryWalkerTest extends OrmTestCase
         $this->persistStraightLineString();
         $this->persistAngularLineString();
 
-        switch ($this->getPlatform()->getName()) {
-            case 'mysql':
-            case 'postgresql':
-            default:
-                $asText = 'ST_AsText';
-                $startPoint = 'ST_StartPoint';
-                $envelope = 'ST_Envelope';
-                break;
-        }
+        $asText = 'ST_AsText';
+        $startPoint = 'ST_StartPoint';
+        $envelope = 'ST_Envelope';
 
         static::test($this->getEntityManager(), $asText, $startPoint, $envelope);
     }

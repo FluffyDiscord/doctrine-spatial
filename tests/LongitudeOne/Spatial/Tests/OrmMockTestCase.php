@@ -97,6 +97,6 @@ abstract class OrmMockTestCase extends TestCase
         $config->setProxyNamespace('LongitudeOne\Spatial\Tests\Proxies');
         $config->setMetadataDriverImpl(new AttributeDriver($path));
 
-        return EntityManager::create($this->getMockConnection(), $config);
+        return new EntityManager($this->getMockConnection(), $config);
     }
 }

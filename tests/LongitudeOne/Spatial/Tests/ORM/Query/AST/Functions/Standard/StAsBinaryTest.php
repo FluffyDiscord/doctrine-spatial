@@ -15,6 +15,8 @@
 
 namespace LongitudeOne\Spatial\Tests\ORM\Query\AST\Functions\Standard;
 
+use Doctrine\DBAL\Platforms\MySQL80Platform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use LongitudeOne\Spatial\Tests\Helper\LineStringHelperTrait;
 use LongitudeOne\Spatial\Tests\OrmTestCase;
 
@@ -69,15 +71,14 @@ class StAsBinaryTest extends OrmTestCase
         $expectedB = '0102000000030000000000000000000840000000000000084000000000000010400000000000002e4000000000000014400000000000003640';
         // phpcs:enable
 
-        switch ($this->getPlatform()->getName()) {
-            case 'mysql':
-                static::assertEquals(pack('H*', $expectedA), $result[0][1]);
-                static::assertEquals(pack('H*', $expectedB), $result[1][1]);
-                break;
-            case 'postgresql':
-            default:
-                static::assertEquals($expectedA, bin2hex(stream_get_contents($result[0][1])));
-                static::assertEquals($expectedB, bin2hex(stream_get_contents($result[1][1])));
+        if($this->getPlatform() instanceof MySQL80Platform) {
+            static::assertEquals(pack('H*', $expectedA), $result[0][1]);
+            static::assertEquals(pack('H*', $expectedB), $result[1][1]);
+        }
+
+        if($this->getPlatform() instanceof PostgreSQLPlatform) {
+            static::assertEquals($expectedA, bin2hex(stream_get_contents($result[0][1])));
+            static::assertEquals($expectedB, bin2hex(stream_get_contents($result[1][1])));
         }
     }
 }

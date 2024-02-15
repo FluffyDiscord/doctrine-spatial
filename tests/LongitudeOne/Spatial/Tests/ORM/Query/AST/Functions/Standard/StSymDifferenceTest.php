@@ -15,6 +15,7 @@
 
 namespace LongitudeOne\Spatial\Tests\ORM\Query\AST\Functions\Standard;
 
+use Doctrine\DBAL\Platforms\MySQL80Platform;
 use LongitudeOne\Spatial\Tests\Helper\LineStringHelperTrait;
 use LongitudeOne\Spatial\Tests\OrmTestCase;
 
@@ -73,17 +74,16 @@ class StSymDifferenceTest extends OrmTestCase
         static::assertEquals($lineStringA, $result[0][0]);
         static::assertEquals('LINESTRING(10 10,12 12)', $result[0][1]);
         static::assertEquals($lineStringB, $result[1][0]);
-        switch ($this->getPlatform()->getName()) {
-            case 'mysql':
-                // MySQL failed ST_SymDifference implementation, so I test the bad result.
-                static::assertEquals('MULTILINESTRING((0 0,12 12),(0 10,15 0))', $result[1][1]);
-                break;
-            case 'postgresl':
-            default:
-                // Here is the good result.
-                // A linestring minus another crossing linestring returns initial linestring splited
-                static::assertStringStartsWith('MULTILINESTRING((0 0,6 6', $result[1][1]);
+
+        if($this->getPlatform() instanceof MySQL80Platform) {
+            // MySQL failed ST_SymDifference implementation, so I test the bad result.
+            static::assertEquals('MULTILINESTRING((0 0,12 12),(0 10,15 0))', $result[1][1]);
+        } else {
+            // Here is the good result.
+            // A linestring minus another crossing linestring returns initial linestring splited
+            static::assertStringStartsWith('MULTILINESTRING((0 0,6 6', $result[1][1]);
         }
+
         static::assertEquals($lineStringC, $result[2][0]);
         static::assertEquals('MULTILINESTRING((0 0,12 12),(2 0,12 10))', $result[2][1]);
     }

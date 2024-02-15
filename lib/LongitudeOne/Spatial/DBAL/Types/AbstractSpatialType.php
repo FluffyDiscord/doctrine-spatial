@@ -16,8 +16,12 @@
 namespace LongitudeOne\Spatial\DBAL\Types;
 
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
+use LongitudeOne\Spatial\DBAL\Platform\MySql;
 use LongitudeOne\Spatial\DBAL\Platform\PlatformInterface;
+use LongitudeOne\Spatial\DBAL\Platform\PostgreSql;
 use LongitudeOne\Spatial\Exception\InvalidValueException;
 use LongitudeOne\Spatial\Exception\UnsupportedPlatformException;
 use LongitudeOne\Spatial\PHP\Types\Geography\GeographyInterface;
@@ -62,7 +66,7 @@ abstract class AbstractSpatialType extends Type
      *
      * @throws UnsupportedPlatformException|InvalidValueException when value is not an instance of Geometry Interface
      */
-    public function convertToDatabaseValue($value, AbstractPlatform $platform)
+    public function convertToDatabaseValue($value, AbstractPlatform $platform): mixed
     {
         if (null === $value) {
             return null;
@@ -81,11 +85,9 @@ abstract class AbstractSpatialType extends Type
      * @param string           $sqlExpr  the SQL expression
      * @param AbstractPlatform $platform the database platform
      *
-     * @return string
-     *
      * @throws UnsupportedPlatformException when platform is unsupported
      */
-    public function convertToDatabaseValueSql($sqlExpr, AbstractPlatform $platform)
+    public function convertToDatabaseValueSql($sqlExpr, AbstractPlatform $platform): string
     {
         return $this->getSpatialPlatform($platform)->convertToDatabaseValueSql($this, $sqlExpr);
     }
@@ -102,7 +104,7 @@ abstract class AbstractSpatialType extends Type
      *
      * @throws UnsupportedPlatformException when platform is unsupported
      */
-    public function convertToPHPValue($value, AbstractPlatform $platform)
+    public function convertToPHPValue($value, AbstractPlatform $platform): mixed
     {
         if (null === $value) {
             return null;
@@ -123,11 +125,9 @@ abstract class AbstractSpatialType extends Type
      * @param string           $sqlExpr  SQL expression
      * @param AbstractPlatform $platform platform database
      *
-     * @return string
-     *
      * @throws UnsupportedPlatformException when platform is unsupported
      */
-    public function convertToPhpValueSql($sqlExpr, $platform)
+    public function convertToPhpValueSql($sqlExpr, $platform): string
     {
         return $this->getSpatialPlatform($platform)->convertToPhpValueSql($this, $sqlExpr);
     }
@@ -137,21 +137,17 @@ abstract class AbstractSpatialType extends Type
      *
      * @param AbstractPlatform $platform platform database
      *
-     * @return array
-     *
      * @throws UnsupportedPlatformException when platform is unsupported
      */
-    public function getMappedDatabaseTypes(AbstractPlatform $platform)
+    public function getMappedDatabaseTypes(AbstractPlatform $platform): array
     {
         return $this->getSpatialPlatform($platform)->getMappedDatabaseTypes($this);
     }
 
     /**
      * Gets the name of this type.
-     *
-     * @return string
      */
-    public function getName()
+    public function getName(): string
     {
         return array_search(get_class($this), self::getTypesMap(), true);
     }
@@ -159,16 +155,14 @@ abstract class AbstractSpatialType extends Type
     /**
      * Gets the SQL declaration snippet for a field of this type.
      *
-     * @param array            $fieldDeclaration the field declaration
+     * @param array            $column the field declaration
      * @param AbstractPlatform $platform         database platform
-     *
-     * @return string
      *
      * @throws UnsupportedPlatformException when platform is unsupported
      */
-    public function getSqlDeclaration(array $fieldDeclaration, AbstractPlatform $platform)
+    public function getSqlDeclaration(array $column, AbstractPlatform $platform): string
     {
-        return $this->getSpatialPlatform($platform)->getSqlDeclaration($fieldDeclaration);
+        return $this->getSpatialPlatform($platform)->getSqlDeclaration($column);
     }
 
     // phpcs:disable Generic.NamingConventions.CamelCapsFunctionName.ScopeNotCamelCaps
@@ -228,18 +222,16 @@ abstract class AbstractSpatialType extends Type
      */
     private function getSpatialPlatform(AbstractPlatform $platform)
     {
-        $platformName = $platform->getName();
-        $const = sprintf('self::PLATFORM_%s', mb_strtoupper($platformName));
-
-        if (!defined($const)) {
-            throw new UnsupportedPlatformException(sprintf(
-                'DBAL platform "%s" is not currently supported.',
-                $platform->getName()
-            ));
+        if ($platform instanceof PostgreSQLPlatform) {
+            return new PostgreSql();
+        }
+        if ($platform instanceof MySQLPlatform) {
+            return new MySql();
         }
 
-        $class = sprintf('LongitudeOne\Spatial\DBAL\Platform\%s', constant($const));
-
-        return new $class();
+        throw new UnsupportedPlatformException(sprintf(
+            'DBAL platform "%s" is not currently supported.',
+            $platform::class
+        ));
     }
 }

@@ -15,6 +15,7 @@
 
 namespace LongitudeOne\Spatial\Tests\ORM\Query\AST\Functions\Standard;
 
+use Doctrine\DBAL\Platforms\MySQL80Platform;
 use LongitudeOne\Spatial\Tests\Helper\LineStringHelperTrait;
 use LongitudeOne\Spatial\Tests\Helper\PointHelperTrait;
 use LongitudeOne\Spatial\Tests\OrmTestCase;
@@ -65,7 +66,7 @@ class StSridTest extends OrmTestCase
 
         static::assertIsArray($result);
         static::assertCount(1, $result);
-        if ('mysql' == $this->getPlatform()->getName()) {
+        if ($this->getPlatform() instanceof MySQL80Platform) {
             // TODO MySQL is returning 0 insteadof 2154
             static::markTestIncomplete('SRID not implemented in Abstraction of MySQL');
         }
@@ -89,7 +90,7 @@ class StSridTest extends OrmTestCase
         static::assertIsArray($result);
         static::assertIsArray($result[0]);
         static::assertCount(1, $result[0]);
-        if ('mysql' == $this->getPlatform()->getName()) {
+        if ($this->getPlatform() instanceof MySQL80Platform) {
             // TODO MySQL is returning 0 insteadof 2154
             static::markTestIncomplete('SRID not implemented in Abstraction of MySQL');
         }
